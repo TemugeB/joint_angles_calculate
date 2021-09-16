@@ -10,6 +10,6 @@ I've included a sample keypoints file. Simply run the demo as:
 python calculate_joint_angles.py kpts_3d.dat
 ```
 
-The calculated joint angles are returned as "jointname_angles". We can use the calculated joint angles to put the motion on a standard skeleton. This is useful because keypoints estimators are not consistent with their estimations, which leads to varying bone lengths. In red, we show the original output of Blazepose[link](https://google.github.io/mediapipe/solutions/pose.html) estimated 3D keypoints. In blue, we show the pose applied on a standard skeleton from the joint angles. The discrepancy between the poses is due to inaccuracy in keypoints estimation leading to bone lengths changing.
+The calculated joint angles are returned as "jointname_angles". We can use the calculated joint angles to put the motion on a standard skeleton. This is useful because keypoints estimators are not consistent with their estimations, which leads to varying bone lengths. In red, we show the original output of Blazepose [[link](https://google.github.io/mediapipe/solutions/pose.html)] estimated 3D keypoints. In blue, we show the pose applied on a standard skeleton from the joint angles. The discrepancy between the poses is due to inaccuracy in keypoints estimation leading to bone lengths changing.
 
 ![example](media/poses.gif "poses")
