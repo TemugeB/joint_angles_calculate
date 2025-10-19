@@ -3,6 +3,7 @@ import sys
 import utils
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+import pickle
 
 def read_keypoints(filename):
 
@@ -388,5 +389,9 @@ if __name__ == '__main__':
     get_base_skeleton(filtered_kpts)
 
     calculate_joint_angles(filtered_kpts)
+
+    with open("mocap_data.pkl", "wb") as f:
+        pickle.dump(filtered_kpts, f)
+
     #draw_skeleton_from_joint_coordinates(filtered_kpts)
     draw_skeleton_from_joint_angles(filtered_kpts)
