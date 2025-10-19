@@ -1,4 +1,8 @@
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.animation import FuncAnimation
 import numpy as np
+from scipy.ndimage import median_filter
 
 
 def compute_bone_lengths(kpts, joints_hierarchy):
@@ -21,3 +25,84 @@ def compute_bone_lengths(kpts, joints_hierarchy):
         bone_lengths[joint] = dist.mean()
 
     return bone_lengths
+
+
+def animate_skeleton(kpts_root, joints_hierarchy, bone_lengths=None, interval=50):
+    """
+    Animates the skeleton over all frames using matplotlib.
+
+    Args:
+        kpts_root: dict[str, np.ndarray] - [num_frames, 3]
+        joints_hierarchy: dict[str, list[str]] - ancestry, first element = direct parent
+        bone_lengths: dict[str, float] (optional)
+        interval: int - milliseconds between frames
+    """
+    num_frames = next(iter(kpts_root.values())).shape[0]
+
+    fig = plt.figure(figsize=(8, 8))
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Prepare lines for each bone
+    lines = {}
+    for joint, parents in joints_hierarchy.items():
+        if not parents:
+            continue
+        parent = parents[0]
+        line, = ax.plot([], [], [], 'o-', lw=2, markersize=4, color='blue')
+        lines[joint] = (line, parent)
+
+    # Optional: add joint labels (fixed at origin, updated each frame)
+    joint_texts = {}
+    for joint in kpts_root.keys():
+        txt = ax.text(0, 0, 0, joint, fontsize=8)
+        joint_texts[joint] = txt
+
+    # Set axis labels
+    ax.set_xlabel('X (forward)')
+    ax.set_ylabel('Y (left)')
+    ax.set_zlabel('Z (up)')
+    ax.set_box_aspect([1,1,1])
+    ax.view_init(elev=20, azim=120)
+
+    # Determine limits
+    all_points = np.concatenate(list(kpts_root.values()), axis=0)
+    ax.set_xlim(np.min(all_points[:,0]), np.max(all_points[:,0]))
+    ax.set_ylim(np.min(all_points[:,1]), np.max(all_points[:,1]))
+    ax.set_zlim(np.min(all_points[:,2]), np.max(all_points[:,2]))
+
+    def update(frame):
+        # update bone positions
+        for joint, (line, parent) in lines.items():
+            child_pos = kpts_root[joint][frame]
+            parent_pos = kpts_root[parent][frame]
+            line.set_data([child_pos[0], parent_pos[0]],
+                          [child_pos[1], parent_pos[1]])
+            line.set_3d_properties([child_pos[2], parent_pos[2]])
+
+        # update joint labels
+        for joint, txt in joint_texts.items():
+            pos = kpts_root[joint][frame]
+            txt.set_position((pos[0], pos[1]))
+            txt.set_3d_properties(pos[2])
+
+        return [l[0] for l in lines.values()] + list(joint_texts.values())
+
+    ani = FuncAnimation(fig, update, frames=num_frames, interval=interval, blit=False)
+    plt.show()
+
+def smooth_keypoints(kpts_dict, kernel_size=3):
+    """
+    Apply a temporal median filter to keypoints to reduce noise.
+
+    Args:
+        kpts_dict: dict[str, np.ndarray] - [num_frames, 3]
+        kernel_size: int - size of median filter window (should be odd)
+
+    Returns:
+        dict[str, np.ndarray] - smoothed keypoints
+    """
+    smoothed = {}
+    for joint, pos in kpts_dict.items():
+        # Apply median filter along the time axis (axis=0) for each coordinate
+        smoothed[joint] = median_filter(pos, size=(kernel_size, 1), mode='nearest')
+    return smoothed

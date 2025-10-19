@@ -111,11 +111,12 @@ def to_root_frame(kpts):
 def main():
     kpts = np.loadtxt(sys.argv[1])
     kpts = to_dictionary(kpts)
+    kpts = utils.smooth_keypoints(kpts, 3)
 
     kpts = add_hip_spine(kpts)
     bone_lengths = utils.compute_bone_lengths(kpts, joints_heirarchy)
     kpts_root, root_pos, R_root = to_root_frame(kpts)
-    
+    utils.animate_skeleton(kpts_root, joints_heirarchy)
 
 
 main()
