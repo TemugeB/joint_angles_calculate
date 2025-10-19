@@ -106,3 +106,16 @@ def smooth_keypoints(kpts_dict, kernel_size=3):
         # Apply median filter along the time axis (axis=0) for each coordinate
         smoothed[joint] = median_filter(pos, size=(kernel_size, 1), mode='nearest')
     return smoothed
+
+def get_children(joints_hierarchy):
+    """
+    Returns a dictionary mapping each joint to its direct children.
+    """
+    children = {joint: [] for joint in joints_hierarchy}
+
+    for joint, parents in joints_hierarchy.items():
+        if parents:  # has a parent
+            parent = parents[0]  # direct parent
+            children[parent].append(joint)
+
+    return children

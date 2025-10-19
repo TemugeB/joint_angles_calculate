@@ -7,21 +7,6 @@ if len(sys.argv) != 2:
     print('Call the program with keypoints data.')
     quit()
 
-#these are the indices of keypoints.
-keypoints_inds = {
-    'left_shoulder': 0,
-    'right_shoulder': 1,
-    'left_elbow': 2,
-    'right_elbow': 3,
-    'left_wrist': 4,
-    'right_wrist': 5,
-    'left_waist': 6,
-    'right_waist': 7,
-    'left_knee': 8,
-    'right_knee': 9,
-    'left_ankle': 10,
-    'right_ankle': 11
-}
 
 #this dictionary defines how each joint relates to the root joint.
 #in other words, the entries in the arrays are the parents of the joint.
@@ -64,6 +49,23 @@ joints_offsets = {
 
 # convert data to dictionary
 def to_dictionary(kpts):
+
+    #these are the indices of keypoints.
+    keypoints_inds = {
+        'left_shoulder': 0,
+        'right_shoulder': 1,
+        'left_elbow': 2,
+        'right_elbow': 3,
+        'left_wrist': 4,
+        'right_wrist': 5,
+        'left_waist': 6,
+        'right_waist': 7,
+        'left_knee': 8,
+        'right_knee': 9,
+        'left_ankle': 10,
+        'right_ankle': 11
+    }
+
     kpts = np.array(kpts).reshape(-1, len(keypoints_inds.keys()), 3)
     
     kpts_dict = {}
@@ -71,6 +73,19 @@ def to_dictionary(kpts):
         kpts_dict[kpt] = kpts[:, ind, :]
     
     return kpts_dict
+
+def get_children(joints_hierarchy):
+    """
+    Returns a dictionary mapping each joint to its direct children.
+    """
+    children = {joint: [] for joint in joints_hierarchy}
+
+    for joint, parents in joints_hierarchy.items():
+        if parents:  # has a parent
+            parent = parents[0]  # direct parent
+            children[parent].append(joint)
+
+    return children
 
 
 def add_hip_spine(kpts_dict):
@@ -107,16 +122,56 @@ def to_root_frame(kpts):
 
     return kpts_root, root_pos, R_root
 
+def calculate_joint_angles(keypoints, joints_heirarchy, joints_offsets, children):
+    
+    #the longest joints chain in the data
+    max_depth = np.max([len(joints) for joints in joints_heirarchy.values()])
+
+    #calculate the joint angles
+    joint_rotations = {}
+    for depth in range(1, max_depth): #skip root depth
+        
+        #calculate only at current depth
+        for joint, parents in joints_heirarchy.items():
+            if len(parents) != depth: continue
+                   
+            #skip endpoints
+            if len(children[joint]) == 0: continue
+
+            if parents[0] == 'hip':
+                pass #get the identity rotation
+            else:
+                #get the rotation of the parent. Shoud this be a chain?
+                pass
+
+
+        pass
 
 def main():
+
+    #open the keypoints data
     kpts = np.loadtxt(sys.argv[1])
     kpts = to_dictionary(kpts)
-    kpts = utils.smooth_keypoints(kpts, 3)
+    kpts = utils.smooth_keypoints(kpts, 3) #applies median filter to try and get rid of bad keypoint estimations
 
+    #add the hips and the spine as the midpoint between the waists and the shoulders.
     kpts = add_hip_spine(kpts)
+
+    #calculate bone lengths from data. Useful for visualizing later.
     bone_lengths = utils.compute_bone_lengths(kpts, joints_heirarchy)
+    
+    #convert the keypoints to be in root frame.
     kpts_root, root_pos, R_root = to_root_frame(kpts)
-    utils.animate_skeleton(kpts_root, joints_heirarchy)
+
+    #visualize the keypoints in root frame.
+    #utils.animate_skeleton(kpts_root, joints_heirarchy)
+
+    #before we calculate the joint angles, lets get a list of children for each joint
+    children = get_children(joints_heirarchy)
+
+    #calculate the joint angles
+    calculate_joint_angles(kpts_root, joints_heirarchy, joints_offsets, children)
+
 
 
 main()
