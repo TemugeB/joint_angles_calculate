@@ -74,19 +74,6 @@ def to_dictionary(kpts):
     
     return kpts_dict
 
-def get_children(joints_hierarchy):
-    """
-    Returns a dictionary mapping each joint to its direct children.
-    """
-    children = {joint: [] for joint in joints_hierarchy}
-
-    for joint, parents in joints_hierarchy.items():
-        if parents:  # has a parent
-            parent = parents[0]  # direct parent
-            children[parent].append(joint)
-
-    return children
-
 
 def add_hip_spine(kpts_dict):
     kpts_dict['hip'] = (kpts_dict['left_waist'] + kpts_dict['right_waist']) / 2
@@ -167,7 +154,8 @@ def main():
     #utils.animate_skeleton(kpts_root, joints_heirarchy)
 
     #before we calculate the joint angles, lets get a list of children for each joint
-    children = get_children(joints_heirarchy)
+    #returns a dict of joint and their direct children
+    children = utils.get_children(joints_heirarchy)
 
     #calculate the joint angles
     calculate_joint_angles(kpts_root, joints_heirarchy, joints_offsets, children)
