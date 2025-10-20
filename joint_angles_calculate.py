@@ -158,7 +158,7 @@ def construct_frames(keypoints, joint, joint_heirarchy, joint_rotations):
 
     elif joint == 'spine':
         primary_vec = keypoints['hip'] - keypoints['spine']
-        constraint_vec = keypoints['left_shoulder'] - keypoints['spine']
+        constraint_vec = keypoints['right_shoulder'] - keypoints['left_shoulder']
 
         Z_expected = np.array([0, 0, -1])
         Y_expected = np.array([0, -1, 0])
@@ -166,19 +166,19 @@ def construct_frames(keypoints, joint, joint_heirarchy, joint_rotations):
 
     elif joint == 'left_shoulder':
 
-        primary_vec = keypoints['left_elbow'] - keypoints['left_shoulder']
-        constraint_vec = keypoints['hip'] - keypoints['spine'] #spine to shoulder is rigid, so can just copy this
+        primary_vec = keypoints['left_elbow'] - keypoints['left_shoulder'] #spine to shoulder is rigid, so can just copy this
+        constraint_vec = keypoints['spine'] - keypoints['hip']
 
-        Z_expected = np.array([0, 0, -1])
-        Y_expected = np.array([0, -1, 0])
+        Z_expected = np.array([0, 1, 0])
+        Y_expected = np.array([0, 0, 1])
         X_expected = np.cross(Y_expected, Z_expected)
 
     elif joint == 'right_shoulder':
-        primary_vec = keypoints['right_elbow'] - keypoints['right_shoulder']
-        constraint_vec = keypoints['hip'] - keypoints['spine']
+        primary_vec = keypoints['right_elbow'] - keypoints['right_shoulder'] #spine to shoulder is rigid, so can just copy this
+        constraint_vec = keypoints['spine'] - keypoints['hip']
 
-        Z_expected = np.array([0, 0, -1])
-        Y_expected = np.array([0, -1, 0])
+        Z_expected = np.array([0, -1, 0])
+        Y_expected = np.array([0, 0, 1])
         X_expected = np.cross(Y_expected, Z_expected)
     else:
         raise RuntimeError(f'Unkown joint name: {joint}')
@@ -287,18 +287,6 @@ def calculate_joint_angles(keypoints, joints_heirarchy, joints_offsets, children
             #smooth the quaternion of rotations
             local_joint_rots = utils.smooth_quaternion_rotations_rotvec(local_joint_rots)
             joint_rotations[joint] = local_joint_rots
-
-                # R_quat = R_i.as_quat()
-                # #check smoothness
-                # if i == 0:
-                #     pass
-                # else:
-                #     prev_quat = local_joint_rots[i-1]
-                #     if np.dot(prev_quat, R_quat) < 0:
-                #         R_quat *= -1.
-
-                # local_joint_rots.append(R_quat)
-
                         
             plt.plot(local_joint_rots[:, 0], label = 'x')
             plt.plot(local_joint_rots[:, 1], label = 'y')
@@ -310,7 +298,7 @@ def calculate_joint_angles(keypoints, joints_heirarchy, joints_offsets, children
             plt.title(joint)
             plt.show()
 
-            euler_angles = np.array([Rotation.from_quat(q).as_euler('xyz') for q in local_joint_rots])
+            euler_angles = np.array([Rotation.from_quat(q).as_euler('yxz') for q in local_joint_rots])
             plt.plot(euler_angles[:, 0], label = 'x')
             plt.plot(euler_angles[:, 1], label = 'y')
             plt.plot(euler_angles[:, 2], label = 'z')
@@ -340,9 +328,13 @@ def main():
     #returns a dict of joint and their direct children
     children = utils.get_children(joints_heirarchy)
 
+    utils.animate_skeleton(kpts_root, joints_heirarchy)
+
     #calculate the joint angles. Returns a dict with joints as keys and values with shape: [num_frames, 4].
     #In other words, a quaternion is returned for each joint and each frame
     joint_angles = calculate_joint_angles(kpts_root, joints_heirarchy, joints_offsets, children)
+    joint_angles['root_positions'] = root_pos
+    joint_angles['root_rotations'] = R_root
 
     with open("mocap_data.pkl", "wb") as f:
         pickle.dump(joint_angles, f)
