@@ -3,6 +3,7 @@ from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.animation import FuncAnimation
 import numpy as np
 from scipy.ndimage import median_filter
+from scipy.spatial.transform import Rotation
 
 
 def compute_bone_lengths(kpts, joints_hierarchy):
@@ -119,3 +120,59 @@ def get_children(joints_hierarchy):
             children[parent].append(joint)
 
     return children
+
+
+def smooth_quaternion_rotations_rotvec(local_joint_rots, window_size=5):
+    """
+    Smoothes an array of quaternions by converting them to rotation vectors,
+    applying a moving average filter, and converting them back.
+
+    Parameters:
+    - local_joint_rots (np.ndarray): Array of quaternions, shape (N, 4).
+    - window_size (int): Size of the moving average window (must be odd).
+
+    Returns:
+    - np.ndarray: Array of smoothed quaternions, shape (N, 4).
+    """
+    
+    # 1. Convert Quaternions to Rotation Objects
+    # Ensure input is an array of (x, y, z, w) quaternions
+    rotation_objects = Rotation.from_quat(local_joint_rots)
+    
+    # 2. Convert Rotation Objects to Rotation Vectors (rot_vec)
+    # The rot_vec is a 3D vector: magnitude is the angle, direction is the axis (theta*u)
+    rot_vecs = rotation_objects.as_rotvec()  # Shape (N, 3)
+    
+    # Check for valid window size
+    if window_size % 2 == 0:
+        window_size += 1  # Ensure window is odd for centered smoothing
+        print(f"Warning: Window size adjusted to {window_size} for centering.")
+
+    # Calculate padding size for the moving average
+    pad_size = window_size // 2
+    
+    # 3. Apply Moving Average Filter to Rotation Vectors
+    # This is a linear filter that works well on the continuous rot_vec space
+    
+    N = len(rot_vecs)
+    smoothed_rot_vecs = np.zeros_like(rot_vecs, dtype=np.float32)
+    
+    # Pad the rotation vectors for boundary handling
+    # We use 'edge' mode to repeat the start/end values
+    padded_rot_vecs = np.pad(rot_vecs, ((pad_size, pad_size), (0, 0)), mode='edge')
+    
+    for i in range(N):
+        # The window starts 'pad_size' frames before 'i' in the padded array
+        # and ends 'pad_size' frames after 'i'
+        start_idx = i
+        end_idx = i + window_size
+        
+        # Calculate the mean (moving average) over the window
+        window = padded_rot_vecs[start_idx:end_idx]
+        smoothed_rot_vecs[i] = np.mean(window, axis=0)
+        
+    # 4. Convert Smoothed Rotation Vectors back to Quaternions
+    smoothed_rotation_objects = Rotation.from_rotvec(smoothed_rot_vecs)
+    
+    # Return the final array of smoothed quaternions (x, y, z, w)
+    return smoothed_rotation_objects.as_quat()

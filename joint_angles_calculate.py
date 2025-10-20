@@ -2,6 +2,7 @@ import sys
 import numpy as np
 from scipy.spatial.transform import Rotation
 import utils
+import matplotlib.pyplot as plt
 
 if len(sys.argv) != 2:
     print('Call the program with keypoints data.')
@@ -128,6 +129,7 @@ def get_parent_rotation(target_joint, joints_heirarchy, joints_rotations):
 
     return rot
 
+
 def calculate_joint_angles(keypoints, joints_heirarchy, joints_offsets, children):
     
     """
@@ -160,14 +162,48 @@ def calculate_joint_angles(keypoints, joints_heirarchy, joints_offsets, children
             child_joint = children[joint][0] #take the first child if there are multiple.
             v_expected = normalize(joints_offsets[child_joint]) #where the child joint is expected to be in T pose
             v_current = keypoints[child_joint] - keypoints[joint]
-            v_current = normalize(R_parent.inv().apply(v_current)) #where the child joint is currently at. 
+            v_current = R_parent.inv().apply(normalize(v_current))
 
             local_joint_rots = []
-            for v in v_current: #iterate over each frame
+            for i,v in enumerate(v_current): #iterate over each frame
                 R_i, _ = Rotation.align_vectors([v], [v_expected])
-                local_joint_rots.append(R_i.as_quat())
+                R_quat = R_i.as_quat()
+                #check smoothness
+                if i == 0:
+                    pass
+                else:
+                    prev_quat = local_joint_rots[i-1]
+                    if np.dot(prev_quat, R_quat) < 0:
+                        R_quat *= -1.
 
-            joint_rotations[joint] = np.array(local_joint_rots)
+                local_joint_rots.append(R_quat)
+
+            local_joint_rots = np.array(local_joint_rots)
+            
+            #smooth the quaternion of rotations
+            local_joint_rots = utils.smooth_quaternion_rotations_rotvec(local_joint_rots)
+                        
+            # plt.plot(local_joint_rots[:, 0], label = 'x')
+            # plt.plot(local_joint_rots[:, 1], label = 'y')
+            # plt.plot(local_joint_rots[:, 2], label = 'z')
+            # plt.plot(local_joint_rots[:, 3], label = 'w')
+
+            # plt.ylim(-1.1, 1.1)
+            # plt.legend()
+            # plt.title(joint)
+            # plt.show()
+
+            # euler_angles = np.array([Rotation.from_quat(q).as_euler('xyz') for q in local_joint_rots])
+            # plt.plot(euler_angles[:, 0], label = 'x')
+            # plt.plot(euler_angles[:, 1], label = 'y')
+            # plt.plot(euler_angles[:, 2], label = 'z')
+
+            # plt.ylim(-3.2, 3.2)
+            # plt.legend()
+            # plt.title(joint)
+            # plt.show()
+
+            joint_rotations[joint] = local_joint_rots
 
     return joint_rotations
 
