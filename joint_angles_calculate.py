@@ -141,27 +141,27 @@ def construct_frames(keypoints, joint, joint_heirarchy, joint_rotations):
     R_parent = get_parent_rotation(joint, joints_heirarchy, joint_rotations)
 
     if joint == 'left_waist':
-        primary_vec = keypoints['left_knee'] - keypoints['left_waist']
-        constraint_vec = keypoints['hip'] - keypoints['left_waist']
+        primary_vec = keypoints['left_waist'] - keypoints['left_knee']
+        constraint_vec = keypoints['left_waist'] - keypoints['hip']
 
-        Z_expected = np.array([0, 0, -1])
-        Y_expected = np.array([0, -1, 0])
+        Z_expected = np.array([0, 0, 1])
+        Y_expected = np.array([0, 1, 0])
         X_expected = np.cross(Y_expected, Z_expected)
     
     elif joint == 'right_waist':
-        primary_vec = keypoints['right_knee'] - keypoints['right_waist']
+        primary_vec = keypoints['right_waist'] - keypoints['right_knee']
         constraint_vec = keypoints['hip'] - keypoints['right_waist']
 
-        Z_expected = np.array([0, 0, -1])
+        Z_expected = np.array([0, 0, 1])
         Y_expected = np.array([0, 1, 0])
         X_expected = np.cross(Y_expected, Z_expected)
 
     elif joint == 'spine':
-        primary_vec = keypoints['hip'] - keypoints['spine']
-        constraint_vec = keypoints['right_shoulder'] - keypoints['left_shoulder']
+        primary_vec = keypoints['spine'] - keypoints['hip']
+        constraint_vec = keypoints['left_shoulder'] - keypoints['right_shoulder']
 
-        Z_expected = np.array([0, 0, -1])
-        Y_expected = np.array([0, -1, 0])
+        Z_expected = np.array([0, 0, 1])
+        Y_expected = np.array([0, 1, 0])
         X_expected = np.cross(Y_expected, Z_expected)
 
     elif joint == 'left_shoulder':
@@ -239,7 +239,7 @@ def calculate_joint_angles(keypoints, joints_heirarchy, joints_offsets, children
                 R_current, R_expected = construct_frames(keypoints, joint, joints_heirarchy, joint_rotations)
 
                 # R_expected is the T-pose frame, R_current is the observed frame
-                R_expected_inv = R_expected.transpose() # Inverse of an orthogonal matrix is its transpose
+                R_expected_inv = R_expected.transpose()
                 R_local_joint_matrix = R_current @ R_expected_inv
                 
                 # Convert the final matrix to a quaternion
@@ -298,7 +298,7 @@ def calculate_joint_angles(keypoints, joints_heirarchy, joints_offsets, children
             plt.title(joint)
             plt.show()
 
-            euler_angles = np.array([Rotation.from_quat(q).as_euler('yxz') for q in local_joint_rots])
+            euler_angles = np.array([Rotation.from_quat(q).as_euler('zxy') for q in local_joint_rots])
             plt.plot(euler_angles[:, 0], label = 'x')
             plt.plot(euler_angles[:, 1], label = 'y')
             plt.plot(euler_angles[:, 2], label = 'z')
@@ -328,7 +328,7 @@ def main():
     #returns a dict of joint and their direct children
     children = utils.get_children(joints_heirarchy)
 
-    utils.animate_skeleton(kpts_root, joints_heirarchy)
+    #utils.animate_skeleton(kpts_root, joints_heirarchy)
 
     #calculate the joint angles. Returns a dict with joints as keys and values with shape: [num_frames, 4].
     #In other words, a quaternion is returned for each joint and each frame
