@@ -3,6 +3,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 import utils
 import matplotlib.pyplot as plt
+import pickle
 
 if len(sys.argv) != 2:
     print('Call the program with keypoints data.')
@@ -130,6 +131,84 @@ def get_parent_rotation(target_joint, joints_heirarchy, joints_rotations):
     return rot
 
 
+def construct_frames(keypoints, joint, joint_heirarchy, joint_rotations):
+    """
+    Unfortunately, we need to manually define stable secondary axis for each frame.
+    This will allow us to calculate joint rotations without axis randomly flipping.
+    """
+
+    #get the parent's rotation
+    R_parent = get_parent_rotation(joint, joints_heirarchy, joint_rotations)
+
+    if joint == 'left_waist':
+        primary_vec = keypoints['left_knee'] - keypoints['left_waist']
+        constraint_vec = keypoints['hip'] - keypoints['left_waist']
+
+        Z_expected = np.array([0, 0, -1])
+        Y_expected = np.array([0, -1, 0])
+        X_expected = np.cross(Y_expected, Z_expected)
+    
+    elif joint == 'right_waist':
+        primary_vec = keypoints['right_knee'] - keypoints['right_waist']
+        constraint_vec = keypoints['hip'] - keypoints['right_waist']
+
+        Z_expected = np.array([0, 0, -1])
+        Y_expected = np.array([0, 1, 0])
+        X_expected = np.cross(Y_expected, Z_expected)
+
+    elif joint == 'spine':
+        primary_vec = keypoints['hip'] - keypoints['spine']
+        constraint_vec = keypoints['left_shoulder'] - keypoints['spine']
+
+        Z_expected = np.array([0, 0, -1])
+        Y_expected = np.array([0, -1, 0])
+        X_expected = np.cross(Y_expected, Z_expected)
+
+    elif joint == 'left_shoulder':
+
+        primary_vec = keypoints['left_elbow'] - keypoints['left_shoulder']
+        constraint_vec = keypoints['hip'] - keypoints['spine'] #spine to shoulder is rigid, so can just copy this
+
+        Z_expected = np.array([0, 0, -1])
+        Y_expected = np.array([0, -1, 0])
+        X_expected = np.cross(Y_expected, Z_expected)
+
+    elif joint == 'right_shoulder':
+        primary_vec = keypoints['right_elbow'] - keypoints['right_shoulder']
+        constraint_vec = keypoints['hip'] - keypoints['spine']
+
+        Z_expected = np.array([0, 0, -1])
+        Y_expected = np.array([0, -1, 0])
+        X_expected = np.cross(Y_expected, Z_expected)
+    else:
+        raise RuntimeError(f'Unkown joint name: {joint}')
+
+
+    # Ortogonalize
+    Z_current_raw = R_parent.inv().apply(normalize(primary_vec))
+    C_raw = R_parent.inv().apply(normalize(constraint_vec))
+
+    # primary axies
+    Z_local = Z_current_raw
+
+    # intermediate axis
+    X_local_temp = np.cross(Z_local, C_raw)
+    X_local_temp = normalize(X_local_temp)
+    
+    # final axis
+    Y_local = np.cross(X_local_temp, Z_local)
+    Y_local = normalize(Y_local)
+
+    # recalculate to ensure orthogonality
+    X_local = np.cross(Y_local, Z_local)
+
+    # constuct rotation matrices
+    R_current = np.stack([X_local, Y_local, Z_local], axis = -1)
+    R_expected = np.stack([X_expected, Y_expected, Z_expected], axis = -1)
+    
+    return R_current, R_expected
+
+
 def calculate_joint_angles(keypoints, joints_heirarchy, joints_offsets, children):
     
     """
@@ -155,55 +234,92 @@ def calculate_joint_angles(keypoints, joints_heirarchy, joints_offsets, children
             #skip endpoints
             if len(children[joint]) == 0: continue
 
-            #get the parent's rotation. This is a rotation object with: [num_frames, rotations]
-            R_parent = get_parent_rotation(joint, joints_heirarchy, joint_rotations)
+            # some joints have a well behaved contraint axis.
+            if joint in ['left_waist', 'right_waist', 'spine', 'left_shoulder', 'right_shoulder']:
+                R_current, R_expected = construct_frames(keypoints, joint, joints_heirarchy, joint_rotations)
 
-            #calculate the joint angles
-            child_joint = children[joint][0] #take the first child if there are multiple.
-            v_expected = normalize(joints_offsets[child_joint]) #where the child joint is expected to be in T pose
-            v_current = keypoints[child_joint] - keypoints[joint]
-            v_current = R_parent.inv().apply(normalize(v_current))
+                # R_expected is the T-pose frame, R_current is the observed frame
+                R_expected_inv = R_expected.transpose() # Inverse of an orthogonal matrix is its transpose
+                R_local_joint_matrix = R_current @ R_expected_inv
+                
+                # Convert the final matrix to a quaternion
+                R_quat = Rotation.from_matrix(R_local_joint_matrix).as_quat()
+                local_joint_rots = np.array(R_quat)
 
-            local_joint_rots = []
-            for i,v in enumerate(v_current): #iterate over each frame
-                R_i, _ = Rotation.align_vectors([v], [v_expected])
-                R_quat = R_i.as_quat()
-                #check smoothness
-                if i == 0:
-                    pass
-                else:
-                    prev_quat = local_joint_rots[i-1]
-                    if np.dot(prev_quat, R_quat) < 0:
-                        R_quat *= -1.
+            # these joints don't have a constraint axis. So just treat them as 1D rotation
+            elif joint in ['left_knee', 'right_knee', 'left_elbow', 'right_elbow']:
+                
+                #get the parent's rotation. This is a rotation object with: [num_frames, rotations]
+                R_parent = get_parent_rotation(joint, joints_heirarchy, joint_rotations)
 
-                local_joint_rots.append(R_quat)
+                #calculate the joint angles
+                child_joint = children[joint][0] #take the first child if there are multiple.
+                v_expected = normalize(joints_offsets[child_joint]) #where the child joint is expected to be in T pose
+                v_current = keypoints[child_joint] - keypoints[joint]
+                v_current = R_parent.inv().apply(normalize(v_current))
 
-            local_joint_rots = np.array(local_joint_rots)
+                #direction this axis is allowed to rotate around.
+                if joint in ['left_knee', 'right_knee']:
+                    rotation_axis = np.array([0,1,0])
+                else: #elbows
+                    rotation_axis = np.array([0,0,1])
+
+                local_joint_rots = []
+
+                for i,v in enumerate(v_current): #iterate over each frame
+                    # full rotation matrix
+                    R_i, _ = Rotation.align_vectors([v], [v_expected])
+                    r_full = R_i.as_rotvec()
+
+                    #project the rotation vector onto 1D rotation axis. This forces only a single direction rotation.
+                    r_proj_mag = np.dot(r_full, rotation_axis)
+                    r_1D = r_proj_mag * rotation_axis
+
+                    #convert back to quaternion
+                    R_quat = Rotation.from_rotvec(r_1D).as_quat()
+
+                    # NOTE: Do NOT do sign-flipping here. 
+                    # The rotation vector projection method ensures continuity 
+                    # in this single-axis rotation and is typically followed by 
+                    # the overall rot_vec smoothing for all joints.
+                    local_joint_rots.append(R_quat)
             
             #smooth the quaternion of rotations
             local_joint_rots = utils.smooth_quaternion_rotations_rotvec(local_joint_rots)
-                        
-            # plt.plot(local_joint_rots[:, 0], label = 'x')
-            # plt.plot(local_joint_rots[:, 1], label = 'y')
-            # plt.plot(local_joint_rots[:, 2], label = 'z')
-            # plt.plot(local_joint_rots[:, 3], label = 'w')
-
-            # plt.ylim(-1.1, 1.1)
-            # plt.legend()
-            # plt.title(joint)
-            # plt.show()
-
-            # euler_angles = np.array([Rotation.from_quat(q).as_euler('xyz') for q in local_joint_rots])
-            # plt.plot(euler_angles[:, 0], label = 'x')
-            # plt.plot(euler_angles[:, 1], label = 'y')
-            # plt.plot(euler_angles[:, 2], label = 'z')
-
-            # plt.ylim(-3.2, 3.2)
-            # plt.legend()
-            # plt.title(joint)
-            # plt.show()
-
             joint_rotations[joint] = local_joint_rots
+
+                # R_quat = R_i.as_quat()
+                # #check smoothness
+                # if i == 0:
+                #     pass
+                # else:
+                #     prev_quat = local_joint_rots[i-1]
+                #     if np.dot(prev_quat, R_quat) < 0:
+                #         R_quat *= -1.
+
+                # local_joint_rots.append(R_quat)
+
+                        
+            plt.plot(local_joint_rots[:, 0], label = 'x')
+            plt.plot(local_joint_rots[:, 1], label = 'y')
+            plt.plot(local_joint_rots[:, 2], label = 'z')
+            plt.plot(local_joint_rots[:, 3], label = 'w')
+
+            plt.ylim(-1.1, 1.1)
+            plt.legend()
+            plt.title(joint)
+            plt.show()
+
+            euler_angles = np.array([Rotation.from_quat(q).as_euler('xyz') for q in local_joint_rots])
+            plt.plot(euler_angles[:, 0], label = 'x')
+            plt.plot(euler_angles[:, 1], label = 'y')
+            plt.plot(euler_angles[:, 2], label = 'z')
+
+            plt.ylim(-3.2, 3.2)
+            plt.legend()
+            plt.title(joint)
+            plt.show()
+            #quit()
 
     return joint_rotations
 
@@ -228,8 +344,7 @@ def main():
     #In other words, a quaternion is returned for each joint and each frame
     joint_angles = calculate_joint_angles(kpts_root, joints_heirarchy, joints_offsets, children)
 
-    #visualize the keypoints in root frame.
-    #utils.animate_skeleton(kpts_root, joints_heirarchy)
-
+    with open("mocap_data.pkl", "wb") as f:
+        pickle.dump(joint_angles, f)
 
 main()
