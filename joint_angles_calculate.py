@@ -81,6 +81,10 @@ def add_hip_spine(kpts_dict):
     return kpts_dict
 
 
+def normalize(v): 
+    return v / np.clip(np.linalg.norm(v, axis=-1, keepdims=True), 1e-8, None)
+
+
 def to_root_frame(kpts):
     """
     Convert mocap keypoints to the root (hip) frame.
@@ -92,7 +96,6 @@ def to_root_frame(kpts):
     x_axis = np.cross(y_axis, z_axis)           #forward
 
     # Normalize and orthogonalize
-    def normalize(v): return v / np.clip(np.linalg.norm(v, axis=-1, keepdims=True), 1e-8, None)
     x_axis = normalize(x_axis)
     y_axis = normalize(np.cross(z_axis, x_axis))
     z_axis = normalize(np.cross(x_axis, y_axis))
@@ -109,13 +112,38 @@ def to_root_frame(kpts):
 
     return kpts_root, root_pos, R_root
 
+
+def get_parent_rotation(target_joint, joints_heirarchy, joints_rotations):
+
+    """
+    Returns the rotation of the parent frame, which needs to be composed from the grandparents.
+    Rotation of a joint depends on the configuration of all of its parent joints, which is applied recursively here.
+    """
+    parents = joints_heirarchy[target_joint]
+
+    #compose the parent's rotation    
+    rot = Rotation.identity()
+    for p in parents[::-1]:
+        rot = rot * Rotation.from_quat(joints_rotations[p])
+
+    return rot
+
 def calculate_joint_angles(keypoints, joints_heirarchy, joints_offsets, children):
     
+    """
+    Calculate the joint angles frame by frame.    
+    """
+
     #the longest joints chain in the data
     max_depth = np.max([len(joints) for joints in joints_heirarchy.values()])
 
-    #calculate the joint angles
-    joint_rotations = {}
+    #calculate the number of frames
+    num_frames = len(keypoints['hip'])
+
+    #by default, the joint angles are calculated in root frame, which always has identity rotation
+    joint_rotations = {'hip': np.tile(np.array([0,0,0,1], dtype=np.float32), (num_frames, 1))}
+
+    #calculate the joint rotations from the smallest depth.
     for depth in range(1, max_depth): #skip root depth
         
         #calculate only at current depth
@@ -125,14 +153,23 @@ def calculate_joint_angles(keypoints, joints_heirarchy, joints_offsets, children
             #skip endpoints
             if len(children[joint]) == 0: continue
 
-            if parents[0] == 'hip':
-                pass #get the identity rotation
-            else:
-                #get the rotation of the parent. Shoud this be a chain?
-                pass
+            #get the parent's rotation. This is a rotation object with: [num_frames, rotations]
+            R_parent = get_parent_rotation(joint, joints_heirarchy, joint_rotations)
 
+            #calculate the joint angles
+            child_joint = children[joint][0] #take the first child if there are multiple.
+            v_expected = normalize(joints_offsets[child_joint]) #where the child joint is expected to be in T pose
+            v_current = keypoints[child_joint] - keypoints[joint]
+            v_current = normalize(R_parent.inv().apply(v_current)) #where the child joint is currently at. 
 
-        pass
+            local_joint_rots = []
+            for v in v_current: #iterate over each frame
+                R_i, _ = Rotation.align_vectors([v], [v_expected])
+                local_joint_rots.append(R_i.as_quat())
+
+            joint_rotations[joint] = np.array(local_joint_rots)
+
+    return joint_rotations
 
 def main():
 
@@ -143,23 +180,20 @@ def main():
 
     #add the hips and the spine as the midpoint between the waists and the shoulders.
     kpts = add_hip_spine(kpts)
-
-    #calculate bone lengths from data. Useful for visualizing later.
-    bone_lengths = utils.compute_bone_lengths(kpts, joints_heirarchy)
     
     #convert the keypoints to be in root frame.
     kpts_root, root_pos, R_root = to_root_frame(kpts)
-
-    #visualize the keypoints in root frame.
-    #utils.animate_skeleton(kpts_root, joints_heirarchy)
 
     #before we calculate the joint angles, lets get a list of children for each joint
     #returns a dict of joint and their direct children
     children = utils.get_children(joints_heirarchy)
 
-    #calculate the joint angles
-    calculate_joint_angles(kpts_root, joints_heirarchy, joints_offsets, children)
+    #calculate the joint angles. Returns a dict with joints as keys and values with shape: [num_frames, 4].
+    #In other words, a quaternion is returned for each joint and each frame
+    joint_angles = calculate_joint_angles(kpts_root, joints_heirarchy, joints_offsets, children)
 
+    #visualize the keypoints in root frame.
+    #utils.animate_skeleton(kpts_root, joints_heirarchy)
 
 
 main()
