@@ -262,7 +262,7 @@ def calculate_joint_angles(keypoints, joints_heirarchy, joints_offsets, children
                 if joint in ['left_knee', 'right_knee']:
                     rotation_axis = np.array([0,1,0])
                 else: #elbows
-                    rotation_axis = np.array([0,0,1])
+                    rotation_axis = np.array([0,1,0])
 
                 local_joint_rots = []
 
@@ -299,7 +299,7 @@ def calculate_joint_angles(keypoints, joints_heirarchy, joints_offsets, children
             # plt.title(joint)
             # plt.show()
 
-            # euler_angles = np.array([Rotation.from_quat(q).as_euler('xyz') for q in local_joint_rots])
+            # euler_angles = np.array([Rotation.from_quat(q).as_euler('zyx') for q in local_joint_rots])
             # plt.plot(euler_angles[:, 0], label = 'x')
             # plt.plot(euler_angles[:, 1], label = 'y')
             # plt.plot(euler_angles[:, 2], label = 'z')
@@ -329,8 +329,6 @@ def main():
     #returns a dict of joint and their direct children
     children = utils.get_children(joints_heirarchy)
 
-    #utils.animate_skeleton(kpts_root, joints_heirarchy)
-
     #calculate the joint angles. Returns a dict with joints as keys and values with shape: [num_frames, 4].
     #In other words, a quaternion is returned for each joint and each frame
     joint_angles = calculate_joint_angles(kpts_root, joints_heirarchy, joints_offsets, children)
@@ -339,5 +337,9 @@ def main():
 
     with open("mocap_data.pkl", "wb") as f:
         pickle.dump(joint_angles, f)
+
+    #draw the skeleton from joint angles
+    bone_lengths = utils.compute_bone_lengths(kpts_root, joints_heirarchy)
+    utils.animate_joint_rotations(joint_angles, joints_heirarchy, joints_offsets, bone_lengths)
 
 main()

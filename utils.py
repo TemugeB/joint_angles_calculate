@@ -25,10 +25,19 @@ def compute_bone_lengths(kpts, joints_hierarchy):
         dist = np.linalg.norm(kpts[joint] - kpts[parent], axis=1)
         bone_lengths[joint] = dist.mean()
 
+    #add the right side joints as well
+    opposite_lengths = {}
+    for joint, b_length in bone_lengths.items():
+        left_index = joint.find('left')
+        if left_index != -1:
+            #swap left -> right
+            opposite_lengths['right' + joint[left_index + 4:]] = b_length
+    bone_lengths.update(opposite_lengths)
+
     return bone_lengths
 
 
-def animate_skeleton(kpts_root, joints_hierarchy, bone_lengths=None, interval=50):
+def animate_skeleton(kpts_root, joints_hierarchy, accumulated_rotations= None, interval=50):
     """
     Animates the skeleton over all frames using matplotlib.
 
@@ -71,6 +80,20 @@ def animate_skeleton(kpts_root, joints_hierarchy, bone_lengths=None, interval=50
     ax.set_ylim(np.min(all_points[:,1]), np.max(all_points[:,1]))
     ax.set_zlim(np.min(all_points[:,2]), np.max(all_points[:,2]))
 
+    axis_lines = {}
+    for joint in kpts_root.keys():
+        line_x, = ax.plot([], [], [], '-', color='red', lw=2.5)
+        line_y, = ax.plot([], [], [], '-', color='green', lw=2.5)
+        line_z, = ax.plot([], [], [], '-', color='blue', lw=2.5)
+        axis_lines[joint] = (line_x, line_y, line_z)
+
+    # Base axis vectors (in the joint's local frame)
+    axis_len = 1.0 # Example length
+    local_x = np.array([axis_len, 0, 0])
+    local_y = np.array([0, axis_len, 0])
+    local_z = np.array([0, 0, axis_len])
+    local_axes = np.stack([local_x, local_y, local_z], axis=0) # [3, 3]
+
     def update(frame):
         # update bone positions
         for joint, (line, parent) in lines.items():
@@ -86,7 +109,40 @@ def animate_skeleton(kpts_root, joints_hierarchy, bone_lengths=None, interval=50
             txt.set_position((pos[0], pos[1]))
             txt.set_3d_properties(pos[2])
 
-        return [l[0] for l in lines.values()] + list(joint_texts.values())
+
+        # Update joint axes visualization
+        for joint, (line_x, line_y, line_z) in axis_lines.items():
+
+            if not joint in accumulated_rotations.keys(): continue
+
+            pos = kpts_root[joint][frame]
+            
+            # 1. Get the rotation for the current joint and frame
+            R_quat = accumulated_rotations[joint][frame]
+            R_obj = Rotation.from_quat(R_quat)
+            
+            # 2. Transform the local axis vectors to the Root Frame
+            # R_obj.apply takes vectors from the frame R_obj defines (the local frame) 
+            # and outputs them in the base frame (the Root Frame)
+            rotated_axes = R_obj.apply(local_axes) # [3, 3] matrix of vectors
+
+            # X-axis (Red)
+            x_end = pos + rotated_axes[0]
+            line_x.set_data([pos[0], x_end[0]], [pos[1], x_end[1]])
+            line_x.set_3d_properties([pos[2], x_end[2]])
+
+            # Y-axis (Green)
+            y_end = pos + rotated_axes[1]
+            line_y.set_data([pos[0], y_end[0]], [pos[1], y_end[1]])
+            line_y.set_3d_properties([pos[2], y_end[2]])
+
+            # Z-axis (Blue)
+            z_end = pos + rotated_axes[2]
+            line_z.set_data([pos[0], z_end[0]], [pos[1], z_end[1]])
+            line_z.set_3d_properties([pos[2], z_end[2]])
+
+        all_lines = [l[0] for l in lines.values()] + [item for sublist in axis_lines.values() for item in sublist]
+        return all_lines + list(joint_texts.values())
 
     ani = FuncAnimation(fig, update, frames=num_frames, interval=interval, blit=False)
     plt.show()
@@ -190,3 +246,50 @@ def fix_sign_flipping(joint_rots):
             q_fixed[i] *= -1
 
     return q_fixed
+
+#animate the joint rotations in root frame
+def animate_joint_rotations(joint_rots, joints_heirarchy, joints_offsets, bone_lengths):
+
+    num_frames = len(joint_rots[list(joint_rots.keys())[0]])
+    
+    #hold the accumulated rotations for each joint
+    accumulated_rotations = {'hip': np.tile([0,0,0,1], (num_frames, 1))}
+
+    #get the children of each joint
+    children = get_children(joints_heirarchy)
+
+    #keypoints in root frame
+    keypoints = {'hip': np.tile([0,0,0], (num_frames, 1))}
+    max_depth = np.max([len(joints) for joints in joints_heirarchy.values()])
+
+    for depth in range(max_depth):
+
+        if depth == 0:
+            #for the hip joint, the children can be directly written
+            for child in children['hip']:
+                locs = np.tile(joints_offsets[child], (num_frames, 1)) * np.array(bone_lengths[child])
+                keypoints[child] = locs
+            continue
+
+        #calculate only at current depth
+        for joint, parents in joints_heirarchy.items():
+            if len(parents) != depth: continue
+            #skip endpoints
+            if len(children[joint]) == 0: continue
+
+            #parent's rotation
+            parent = joints_heirarchy[joint][0] #direct parent
+            R_parent = accumulated_rotations[parent]
+
+            R_joint = Rotation.from_quat(R_parent) * Rotation.from_quat(joint_rots[joint])
+            accumulated_rotations[joint] = R_joint.as_quat()
+
+            parent_pos = keypoints[joint]
+
+            for child in children[joint]:
+                #rotate the bone
+                locs = R_joint.apply(np.tile(joints_offsets[child], (num_frames, 1)) * np.array(bone_lengths[child]))
+                #find the position of the keypoint
+                keypoints[child] = parent_pos + locs
+
+    animate_skeleton(keypoints, joints_heirarchy, accumulated_rotations)
