@@ -109,37 +109,37 @@ def animate_skeleton(kpts_root, joints_hierarchy, accumulated_rotations= None, i
             txt.set_position((pos[0], pos[1]))
             txt.set_3d_properties(pos[2])
 
+        if accumulated_rotations:
+            # Update joint axes visualization
+            for joint, (line_x, line_y, line_z) in axis_lines.items():
 
-        # Update joint axes visualization
-        for joint, (line_x, line_y, line_z) in axis_lines.items():
+                if not joint in accumulated_rotations.keys(): continue
 
-            if not joint in accumulated_rotations.keys(): continue
+                pos = kpts_root[joint][frame]
+                
+                # 1. Get the rotation for the current joint and frame
+                R_quat = accumulated_rotations[joint][frame]
+                R_obj = Rotation.from_quat(R_quat)
+                
+                # 2. Transform the local axis vectors to the Root Frame
+                # R_obj.apply takes vectors from the frame R_obj defines (the local frame) 
+                # and outputs them in the base frame (the Root Frame)
+                rotated_axes = R_obj.apply(local_axes) # [3, 3] matrix of vectors
 
-            pos = kpts_root[joint][frame]
-            
-            # 1. Get the rotation for the current joint and frame
-            R_quat = accumulated_rotations[joint][frame]
-            R_obj = Rotation.from_quat(R_quat)
-            
-            # 2. Transform the local axis vectors to the Root Frame
-            # R_obj.apply takes vectors from the frame R_obj defines (the local frame) 
-            # and outputs them in the base frame (the Root Frame)
-            rotated_axes = R_obj.apply(local_axes) # [3, 3] matrix of vectors
+                # X-axis (Red)
+                x_end = pos + rotated_axes[0]
+                line_x.set_data([pos[0], x_end[0]], [pos[1], x_end[1]])
+                line_x.set_3d_properties([pos[2], x_end[2]])
 
-            # X-axis (Red)
-            x_end = pos + rotated_axes[0]
-            line_x.set_data([pos[0], x_end[0]], [pos[1], x_end[1]])
-            line_x.set_3d_properties([pos[2], x_end[2]])
+                # Y-axis (Green)
+                y_end = pos + rotated_axes[1]
+                line_y.set_data([pos[0], y_end[0]], [pos[1], y_end[1]])
+                line_y.set_3d_properties([pos[2], y_end[2]])
 
-            # Y-axis (Green)
-            y_end = pos + rotated_axes[1]
-            line_y.set_data([pos[0], y_end[0]], [pos[1], y_end[1]])
-            line_y.set_3d_properties([pos[2], y_end[2]])
-
-            # Z-axis (Blue)
-            z_end = pos + rotated_axes[2]
-            line_z.set_data([pos[0], z_end[0]], [pos[1], z_end[1]])
-            line_z.set_3d_properties([pos[2], z_end[2]])
+                # Z-axis (Blue)
+                z_end = pos + rotated_axes[2]
+                line_z.set_data([pos[0], z_end[0]], [pos[1], z_end[1]])
+                line_z.set_3d_properties([pos[2], z_end[2]])
 
         all_lines = [l[0] for l in lines.values()] + [item for sublist in axis_lines.values() for item in sublist]
         return all_lines + list(joint_texts.values())
@@ -292,4 +292,4 @@ def animate_joint_rotations(joint_rots, joints_heirarchy, joints_offsets, bone_l
                 #find the position of the keypoint
                 keypoints[child] = parent_pos + locs
 
-    animate_skeleton(keypoints, joints_heirarchy, accumulated_rotations)
+    animate_skeleton(keypoints, joints_heirarchy)
