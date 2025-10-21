@@ -42,11 +42,11 @@ joints_offsets = {
     'right_ankle': [0,0,-1],
     'spine': [0,0,1],
     'left_shoulder': [0,1,0],
-    'left_elbow': [0,1,0],
-    'left_wrist': [0,1,0],
+    'left_elbow': [0,0,-1],
+    'left_wrist': [0,0,-1],
     'right_shoulder': [0,-1,0],
-    'right_elbow': [0,-1,0],
-    'right_wrist': [0,-1,0]
+    'right_elbow': [0,0,-1],
+    'right_wrist': [0,0,-1]
 }
 
 # convert data to dictionary
@@ -166,19 +166,19 @@ def construct_frames(keypoints, joint, joint_heirarchy, joint_rotations):
 
     elif joint == 'left_shoulder':
 
-        primary_vec = keypoints['left_elbow'] - keypoints['left_shoulder'] #spine to shoulder is rigid, so can just copy this
-        constraint_vec = keypoints['spine'] - keypoints['hip']
+        primary_vec = keypoints['left_shoulder'] - keypoints['left_elbow']
+        constraint_vec = keypoints['left_shoulder'] - keypoints['spine']
 
-        Z_expected = np.array([0, 1, 0])
-        Y_expected = np.array([0, 0, 1])
+        Z_expected = np.array([0, 0, 1])
+        Y_expected = np.array([0, 1, 0])
         X_expected = np.cross(Y_expected, Z_expected)
 
     elif joint == 'right_shoulder':
-        primary_vec = keypoints['right_elbow'] - keypoints['right_shoulder'] #spine to shoulder is rigid, so can just copy this
-        constraint_vec = keypoints['spine'] - keypoints['hip']
+        primary_vec = keypoints['right_shoulder'] - keypoints['right_elbow'] #spine to shoulder is rigid, so can just copy this
+        constraint_vec = keypoints['spine'] - keypoints['right_shoulder']
 
-        Z_expected = np.array([0, -1, 0])
-        Y_expected = np.array([0, 0, 1])
+        Z_expected = np.array([0, 0, 1])
+        Y_expected = np.array([0, 1, 0])
         X_expected = np.cross(Y_expected, Z_expected)
     else:
         raise RuntimeError(f'Unkown joint name: {joint}')
@@ -285,6 +285,7 @@ def calculate_joint_angles(keypoints, joints_heirarchy, joints_offsets, children
                     local_joint_rots.append(R_quat)
             
             #smooth the quaternion of rotations
+            local_joint_rots = utils.fix_sign_flipping(local_joint_rots)
             local_joint_rots = utils.smooth_quaternion_rotations_rotvec(local_joint_rots)
             joint_rotations[joint] = local_joint_rots
                         
@@ -298,7 +299,7 @@ def calculate_joint_angles(keypoints, joints_heirarchy, joints_offsets, children
             plt.title(joint)
             plt.show()
 
-            euler_angles = np.array([Rotation.from_quat(q).as_euler('zxy') for q in local_joint_rots])
+            euler_angles = np.array([Rotation.from_quat(q).as_euler('xyz') for q in local_joint_rots])
             plt.plot(euler_angles[:, 0], label = 'x')
             plt.plot(euler_angles[:, 1], label = 'y')
             plt.plot(euler_angles[:, 2], label = 'z')

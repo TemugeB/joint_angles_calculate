@@ -176,3 +176,17 @@ def smooth_quaternion_rotations_rotvec(local_joint_rots, window_size=5):
     
     # Return the final array of smoothed quaternions (x, y, z, w)
     return smoothed_rotation_objects.as_quat()
+
+def fix_sign_flipping(joint_rots):
+
+    q_fixed = np.copy(joint_rots)
+
+    for i in range(1, len(q_fixed)):
+        # Calculate the dot product between current and previous frame
+        dot_product = np.dot(q_fixed[i], q_fixed[i-1])
+        
+        # If dot product is negative, flip the sign of the current quaternion
+        if dot_product < 0:
+            q_fixed[i] *= -1
+
+    return q_fixed
