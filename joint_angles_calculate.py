@@ -289,25 +289,25 @@ def calculate_joint_angles(keypoints, joints_heirarchy, joints_offsets, children
             local_joint_rots = utils.smooth_quaternion_rotations_rotvec(local_joint_rots)
             joint_rotations[joint] = local_joint_rots
                         
-            plt.plot(local_joint_rots[:, 0], label = 'x')
-            plt.plot(local_joint_rots[:, 1], label = 'y')
-            plt.plot(local_joint_rots[:, 2], label = 'z')
-            plt.plot(local_joint_rots[:, 3], label = 'w')
+            # plt.plot(local_joint_rots[:, 0], label = 'x')
+            # plt.plot(local_joint_rots[:, 1], label = 'y')
+            # plt.plot(local_joint_rots[:, 2], label = 'z')
+            # plt.plot(local_joint_rots[:, 3], label = 'w')
 
-            plt.ylim(-1.1, 1.1)
-            plt.legend()
-            plt.title(joint)
-            plt.show()
+            # plt.ylim(-1.1, 1.1)
+            # plt.legend()
+            # plt.title(joint)
+            # plt.show()
 
-            euler_angles = np.array([Rotation.from_quat(q).as_euler('xyz') for q in local_joint_rots])
-            plt.plot(euler_angles[:, 0], label = 'x')
-            plt.plot(euler_angles[:, 1], label = 'y')
-            plt.plot(euler_angles[:, 2], label = 'z')
+            # euler_angles = np.array([Rotation.from_quat(q).as_euler('xyz') for q in local_joint_rots])
+            # plt.plot(euler_angles[:, 0], label = 'x')
+            # plt.plot(euler_angles[:, 1], label = 'y')
+            # plt.plot(euler_angles[:, 2], label = 'z')
 
-            plt.ylim(-3.2, 3.2)
-            plt.legend()
-            plt.title(joint)
-            plt.show()
+            # plt.ylim(-3.2, 3.2)
+            # plt.legend()
+            # plt.title(joint)
+            # plt.show()
             #quit()
 
     return joint_rotations
