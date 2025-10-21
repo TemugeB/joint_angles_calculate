@@ -258,25 +258,28 @@ def calculate_joint_angles(keypoints, joints_heirarchy, joints_offsets, children
                 v_current = keypoints[child_joint] - keypoints[joint]
                 v_current = R_parent.inv().apply(normalize(v_current))
 
-                #direction this axis is allowed to rotate around.
-                if joint in ['left_knee', 'right_knee']:
-                    rotation_axis = np.array([0,1,0])
-                else: #elbows
-                    rotation_axis = np.array([0,1,0])
-
                 local_joint_rots = []
 
                 for i,v in enumerate(v_current): #iterate over each frame
                     # full rotation matrix
                     R_i, _ = Rotation.align_vectors([v], [v_expected])
-                    r_full = R_i.as_rotvec()
 
-                    #project the rotation vector onto 1D rotation axis. This forces only a single direction rotation.
-                    r_proj_mag = np.dot(r_full, rotation_axis)
-                    r_1D = r_proj_mag * rotation_axis
+                    #if joint is knee, then restict to y-axis only rotation
+                    if joint in ['left_knee', 'right_knee']:
+                        #the joint is knee, then restrict to 1D rotation
+                        rotation_axis = np.array([0,1,0])
+                        r_full = R_i.as_rotvec()
 
-                    #convert back to quaternion
-                    R_quat = Rotation.from_rotvec(r_1D).as_quat()
+                        #project the rotation vector onto 1D rotation axis. This forces only a single direction rotation.
+                        r_proj_mag = np.dot(r_full, rotation_axis)
+                        r_1D = r_proj_mag * rotation_axis
+
+                        #convert back to quaternion
+                        R_quat = Rotation.from_rotvec(r_1D).as_quat()
+
+                    #if joint is elbow, save the full rotation matrix
+                    else:
+                        R_quat = R_i.as_quat()
 
                     # NOTE: Do NOT do sign-flipping here. 
                     # The rotation vector projection method ensures continuity 

@@ -292,4 +292,4 @@ def animate_joint_rotations(joint_rots, joints_heirarchy, joints_offsets, bone_l
                 #find the position of the keypoint
                 keypoints[child] = parent_pos + locs
 
-    animate_skeleton(keypoints, joints_heirarchy)
+    animate_skeleton(keypoints, joints_heirarchy, accumulated_rotations)
